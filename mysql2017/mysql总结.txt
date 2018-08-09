@@ -1,0 +1,163 @@
+﻿面试步骤：
+1.笔试：
+	开卷、电脑、手机、拍下来发群里，开卷能答对就行。
+2.面对面：
+	a.自我介绍之后，不要停留。直接切入你在公司的工作情况，讲解架构。
+	b.工作中的问题说出来，解决方案。
+3.改变潜意识：
+	a.面试详细总结发给面试官。
+	b.面对面不要口说，一定要画图讲解。如果画的不好，提前打印好，拿图讲。
+	
+
+1.一台办公室内主机无法上网（打不开网站），请给出你的排查步骤？
+	
+	①首先确定物理链路是否联通正常。
+    ②查看本机IP，路由，DNS的设置情况是否达标。
+    ③防火墙是否阻拦。
+    ④ping一下网关，进行最基础的检查，通了，表示能够到达服务器。 
+    ⑤测试到网关或路由器的通常情况，先测网关，然后再测路由器一级一级的测试。
+    ⑥测试ping公网ip的通常情况（记住几个外部IP）， 百度61.135.169.121
+    ⑦测试DNS的通畅。ping出对应IP。
+    ⑧通过以上检查后，还在网管的路由器上进行检查。
+
+2.作为一名运维人员，有运营人员反映我们的网站education.org打开慢，这时你如何排查？思路：用户（电脑网络）->运营商网络->网站服务商（接入层-中间件-第三方接口-数据层）
+
+	1。chrome打开调试模式，访问URL，查看慢在什么地方。网络慢，服务器处理慢，同域名下资源太多，等等
+	2。测试到服务器的延时，丢包率等。
+	3。页面优化，切图等，资源加载不要阻塞，具体找开发聊一下。
+	4。web服务器上开日志，看看是哪个环节慢，如果是PHP慢，就需要调试php参数，优化线程数。PHP逻辑问题需要开发解决。其他类型应用服务类似。
+	5。搭建监控平台，查看服务器负载，观察用户数和慢有没有对应的关系，
+	6。智能dns，cdn，等都可以考虑使用。
+
+3.请问你如何理解网站并发的概念？
+	1	并发简单的来说就是在同一时刻不同用户访问同一资源的问题，专业一点的说法就是在同一时刻有多个线程访问了同一个数据资源。
+	2	高并发带来的问题：1 用户量大，网络环境复杂。2 要求服务稳定性高。3 易于扩展。4 安全性高。
+	
+4.你的公司网站并发多少？访问量多少？
+	比如说网站平均页面大小300K，最高流量点比如说6G，然后公式就是：6*1024*1024/300=20000的并发
+
+5.描述mysql主从同步原理
+	1、主服务器验证请求
+	2、主服务器给从服务器开启一个线程。
+	3、从服务器将自己的二进制位移告诉主服务器
+	4、主服务器检查该值是否小于自己的二进制位移。
+	5、如果小于则通知从服务器来取数据。
+	6、从服务器在主服务器取数据，直至取完，然后进入睡眠状态。
+	7、主服务器有更新时，主服务器的IO线程被激活，并将二进制日志推送给从服务器，通知从服务器进入工作状态。
+	8、从服务器的SQL线程执行二进制文件，之后进入睡眠状态。
+	
+		1.同步时，主库由1个IO线程来完成，从库由2个线程1个IO，1个sql来完成，从IO把主IO传输过来的数据往relay-log中继日志里写，然后有sql线程读取中继日志并写入从库
+		2.在同步之前保证主从的数据一致。
+		3.从库做级联同步的话，注意要在配置文件开启2个参数 mysql-bin	和 log-slave-updates
+
+6.描述mysql主从同步部署
+	1、修改配置文件： /etc/my.cnf （主、从都需添加）
+		log-bin=mysql-bin 开起二进制日志文件
+		server-id=xx 申明本台 mysql 服务器 ID
+		service mysql restart 修改了配置文件，重新启动
+	2、进入数据库（主服务器）
+		grant replication slave on *.* to ' 用户 '@'%' identified by ' 密码 '; 创建从服务器用户
+		flush privileges;
+		show master status; 查看二进制文件名，以及大小
+		flush table with read lock;	不退出终端，新打开1个终端执行全备份 (锁库操作，在备份完毕后执行unlock tables;解锁操作)@@@@@@@@
+		mysqldump -uroot -p123 -AB --master-data=2 --events |gzip > /root/all.sql.gz
+		mysqldump -uroot -p123 -A -B -l --master-data=2 --events |gzip > /root/all.sql.gz	或者直接在备份的时候锁
+	3、进入数据库（从服务器）
+		change master to master_host=' 主服务器 IP',master_user=' 用户 ',master_password=' 密码 ',master_log_file=' 二进制文
+		件 ',master_log_pos= 文件空间大小 ; 确定从主服务器同步
+		show slave status\G; 查看同步服务开启状态
+		start slave; 如果同步状态没有启动，则开启
+
+7.描述mysqlroot密码忘了怎么办？
+	1、skip-grant-tables 修改配置文件，重启数据库
+	2、update mysql.user set password=password("123") where user="root"; && flush privileges; 进入数据库，重设mysql密码
+	3、删除1的配置项，重启数据库
+
+8.描述MyISAM与Innodb数据库引擎特点与区别？
+	1、 存储结构
+		MyISAM：每个MyISAM在磁盘上存储成三个文件。第一个文件的名字以表的名字开始，扩展名指出文件类型。.frm文件存储表定义。数据文件的扩展名为.MYD (MYData)。索引文件的扩展名是.MYI (MYIndex)。
+		InnoDB：所有的表都保存在同一个数据文件中（也可能是多个文件，或者是独立的表空间文件），InnoDB表的大小只受限于操作系统文件的大小，一般为2GB。
+	2、 存储空间
+		MyISAM：可被压缩，存储空间较小。支持三种不同的存储格式：静态表(默认，但是注意数据末尾不能有空格，会被去掉)、动态表、压缩表。
+		InnoDB：需要更多的内存和存储，它会在主内存中建立其专用的缓冲池用于高速缓冲数据和索引。
+	3、 事务支持
+		MyISAM：强调的是性能，每次查询具有原子性,其执行数度比InnoDB类型更快，但是不提供事务支持。
+		InnoDB：提供事务支持事务，外部键等高级数据库功能。 具有事务(commit)、回滚(rollback)和崩溃修复能力(crash recovery capabilities)的事务安全(transaction-safe (ACID compliant))型表。
+	4、 CURD操作
+		MyISAM：如果执行大量的SELECT，MyISAM是更好的选择。(因为没有支持行级锁)，在增删的时候需要锁定整个表格，效率会低一些。相关的是innodb支持行级锁，删除插入的时候只需要锁定改行就行，效率较高
+		InnoDB：如果你的数据执行大量的INSERT或UPDATE，出于性能方面的考虑，应该使用InnoDB表。DELETE 从性能上InnoDB更优，但DELETE FROM table时，InnoDB不会重新建立表，而是一行一行的删除，在innodb上如果要清空保存有大量数据的表，最好使用truncate table这个命令。
+	5、 外键
+		MyISAM：不支持
+		InnoDB：支持
+
+9.描述mysql多实例部署
+	主要就是指定配置文件位置，用户，安装目录，数据目录，socket位置，用于并发量不大，服务器资源宽裕的时候，可以在一台服务器上启动多个mysql,减少资源浪费
+
+10.描述如何查看mysql的命令帮助，请举例
+	1.MySQL数据库有帮助命令，利用命令可以查看可供查询的分类，操作命令是：？ contents;
+	2.查看MySQL自定义的操作语句，可以利用命令：? data definition;
+	3.如果想查看MySQL数据库支持哪些数据类型，可以利用命令：? data types;
+	4.查看数据类型varchar的描述，可以利用命令：? varchar;
+	5.? show;
+11.描述mysql增量备份恢复过程。
+	
+	
+12.mysql出现同步故障如何解决？
+	
+	错误0.从库的配置文件中一般加入log-slave-updates参数用来控制M01是否把所有的操作写入到binary log，默认的情况下mysql是关闭的;特别是双主多从的架构！
+		  常用配置参数：
+		  server-id = IP末位
+		  log-bin = /data/3307/mysql-bin	指定二进制日志位置及文件名
+		  log-slave-updates
+		  expire_logs_days = 7	日志保留期
+		  slave-skip-errors = 1032,1062,1007	根据实际情况而定
+		  
+		   
+	错误1.数据库不同步，错误码1007数据库已存在，创建数据库失败：比如先在从库建立1个数据库，主再建立，
+	解决办法：
+		stop slave;
+		set global sql_slave_skip_counter=1;忽略上一次操作，从下一次记录的操作开始同步
+		start slave;
+	
+	错误2.关键参数
+		Slave_IO_Running:	Yes
+		Slave_SQL_Running:	Yes
+		Seconds_Behind_Master 是否为0，#0表示已经同步状态
+			提示：set global sql_slave_skip_counter=n #n  取值>0 忽略执行N个更新。
+	
+	错误3.一般1032：记录不存在	1062:字段值重复，入库失败	1007：数据库已存在，创建数据库失败等错误，直接在配置文件中加入跳过即可：
+		slave-skip-errors=1032,1062,1007
+		
+	错误4.MySQL连接慢的时候一般在配置文件里加入skip-name-resolve
+		
+13.mysql出现同步延迟原因是什么？如何解决？
+	最简单的减少slave同步延时的方案就是在架构上做优化，尽量让主库的DDL快速执行。还有就是主库是写，对数据安全性较高，
+	比如sync_binlog=1，innodb_flush_log_at_trx_commit = 1 之类的设置，而slave则不需要这么高的数据安全，完全可以讲sync_binlog设置为0或者
+	关闭binlog，innodb_flushlog也可以设置为0来提高sql的执行效率。另外就是使用比主库更好的硬件设备作为slave。
+	
+	1.从库太多导致复制延迟
+		优化：建议从库数量3-5个为宜 
+	2.从库硬件比主库硬件差
+		优化：提升硬件性能 
+	3.慢SQL语句过多
+		优化：SQL语句执行时间太长，需要优化SQL语句 
+	4.主从复制的设计问题
+		优化：主从复制单线程，可以通过多线程IO方案解决；另外MySQL5.6.3支持多线程IO复制。 
+	5.主从库之间的网络延迟
+		优化：尽量链路短，提升端口带宽 
+	6.主库读写压力大
+		优化：前端加buffer和缓存。主从延迟不同步： 
+		不管有多延迟，只要不影响业务就没事
+	7、业务设计缺陷导致延迟影响业务
+		优化：从库没有数据改读主库
+		
+11.mysql压力大，解决方案
+	当使用MySQL数据库的网站访问量越来越大的时候，它的压力也会越来越大，那么如何给MySQL数据库减压呢？那就是优化！ 单机MySQL的优化有三种方法。分别是：
+	一、服务器物理硬件的优化；
+	二、MySQL安装时的编译优化；
+	三、自身配置文件my.cnf的优化。
+		1、服务器物理硬件的优化１、磁盘寻道能力(磁盘I/O) 是制约MySQL性能的最大因素之一，建议使用RAID1+0磁盘阵列，另外最好不要尝试使用RAID-5，因为MySQL在RAID-5磁盘阵列上的效率实际上并不是很快;２、CPU也很重要，对于MySQL应用，推荐使用DELL R710，E5620 @2.40GHz(4 core)* 2或跟这个处理能力差不多的也行。 
+		３、物理内存，物理内存对于一台使用MySQL的Database Server来说，服务器内存建议不要小于2GB，推荐使用4GB以上的物理内存。二、MySQL安装时的编译优化 建议采取编译安装的方法，这样性能上有较大提升，服务器系统建议用64bit的Centos5.5，源码包的编译参数会默认以Debgu模式生成二进制代码，而Debug模式给MySQL带来的性能损失是比较大的，所以当我们编译准备安装的产品代码时，一定不要忘记使用“—without-debug”参数禁用Debug模式。 而如果把—with-mysqld-ldflags和—with-client-ldflags二个编译参数设置为—all-static的话，可以告诉编译器以静态方式编译和编译结果代码得到最高的性能。使用静态编译和使用动态编译的代码相比，性能差距可能会达到5%至10%之多。三、自身配置文件my.cnf的优化 当解决了上述服务器硬件制约因素后，让我们看看MySQL自身的优化是如何操作的。对 MySQL自身的优化主要是对其配置文件my.cnf中的各项参数进行优化调整。下面我们介绍一些对性能影响较大的参数。下面，我们根据以上硬件配置结合一份已经优化好的my.cnf进行说明：#vim /etc/my.cnf以下只列出my.cnf文件中[mysqld]段落中的内容，其他段落内容对MySQL运行性能影响甚微，因而姑且忽略。[mysqld] port = 3306 serverid = 1 socket = /tmp/mysql.sockskip-locking#避免MySQL的外部锁定，减少出错几率增强稳定性。skip-name-resolve#禁止MySQL对外部连接进行DNS解析，使用这一选项可以消除MySQL进行DNS解析的时间。但需要注意，如果开启该选项，则所有远程主机连接授权都要使用IP地址方式，否则MySQL将无法正常处理连接请求!back_log = 384#back_log参数的值指出在MySQL暂时停止响应新请求之前的短时间内多少个请求可以被存在堆栈中。 如果系统在一个短时间内有很多连接，则需要增大该参数的值，该参数值指定到来的TCP/IP连接的侦听队列的大小。不同的操作系统在这个队列大小上有它自 己的限制。 试图设定back_log高于你的操作系统的限制将是无效的。默认值为50。对于Linux系统推荐设置为小于512的整数。key_buffer_size = 384M#key_buffer_size指定用于索引的缓冲区大小，增加它可得到更好的索引处理性能。对于内存在4GB左右的服务器该参数可设置为256M或384M。注意：该参数值设置的过大反而会是服务器整体效率降低!max_allowed_packet = 4M thread_stack = 256K table_cache = 614K sort_buffer_size = 6M#查询排序时所能使用的缓冲区大小。注意：该参数对应的分配内存是每连接独占，如果有100个连接，那么实际分配的总共排序缓冲区大小为100 × 6 = 600MB。所以，对于内存在4GB左右的服务器推荐设置为6-8M。read_buffer_size = 4M#读查询操作所能使用的缓冲区大小。和sort_buffer_size一样，该参数对应的分配内存也是每连接独享。join_buffer_size = 8M#联合查询操作所能使用的缓冲区大小，和sort_buffer_size一样，该参数对应的分配内存也是每连接独享。myisam_sort_buffer_size = 64M table_cache = 512 thread_cache_size = 64 query_cache_size = 64M#指定MySQL查询缓冲区的大小。可以通过在MySQL控制台观察，如果Qcache_lowmem_prunes的值非常大，则表明经常出现缓冲不够 的情况;如果Qcache_hits的值非常大，则表明查询缓冲使用非常频繁，如果该值较小反而会影响效率，那么可以考虑不用查询缓冲;Qcache_free_blocks，如果该值非常大，则表明缓冲区中碎片很多。tmp_table_size = 256M max_connections = 768#指定MySQL允许的最大连接进程数。如果在访问论坛时经常出现Too Many Connections的错误提 示，则需要增大该参数值。max_connect_errors = 1000 wait_timeout = 10#指定一个请求的最大连接时间，对于4GB左右内存的服务器可以设置为5-10。thread_concurrency = 8#该参数取值为服务器逻辑CPU数量*2，在本例中，服务器有2颗物理CPU，而每颗物理CPU又支持H.T超线程，所以实际取值为4*2=8;这个目前也是双四核主流服务器配置。skip-networking#开启该选项可以彻底关闭MySQL的TCP/IP连接方式，如果WEB服务器是以远程连接的方式访问MySQL数据库服务器则不要开启该选项!否则将无法正常连接!table_cache=1024#物理内存越大,设置就越大.默认为2402,调到512-1024最佳innodb_additional_mem_pool_size=4M#默认为2Minnodb_flush_log_at_trx_commit=1#设置为0就是等到innodb_log_buffer_size列队满后再统一储存,默认为1innodb_log_buffer_size=2M#默认为1Minnodb_thread_concurrency=8#你的服务器CPU有几个就设置为几,建议用默认一般为8key_buffer_size=256M#默认为218，调到128最佳tmp_table_size=64M#默认为16M，调到64-256最挂read_buffer_size=4M#默认为64Kread_rnd_buffer_size=16M#默认为256Ksort_buffer_size=32M#默认为256Kthread_cache_size=120#默认为60query_cache_size=32M 另外很多情况需要具体情况具体分析１、如果Key_reads太大，则应该把my.cnf中Key_buffer_size变大，保持Key_reads/Key_read_requests至少1/100以上，越小越好。２、如果Qcache_lowmem_prunes很大，就要增加Query_cache_size的值。 通过参数设置进行性能优化或多或少可以带来性能的提升，但效果不一定会很突出。
+	
+11、MySQL重大故障实例及恢复：625某电商网站数据库特大故障解决实录
+	http://www.etiantian.org

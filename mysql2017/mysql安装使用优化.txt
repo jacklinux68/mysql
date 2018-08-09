@@ -1,0 +1,283 @@
+grant select,insert,update,drop,delete on zhutizhijia.* to zhutizhijia@'localhost' identified by '3GGnIhGydjfioweDJKLF3KLDGKLF';
+
+linux最小化安装，选择自定义包
+一、Base System下选择1.Base 2.Compatibility libraries 3.Debugging Tools
+二、Development下选择Development tools
+三、补充安装yum -y install tree nmap sysstar lrzsz dos2unix
+四、每款软件安装完毕后记得做link
+
+正式安装mysql5.5.48
+1.安装ncurses
+yum -y install ncurses-devel
+cd /lamp/ncurses-5.9
+./configure --with-shared --without-debug --without-ada --enable-overwrite
+make 
+make install
+
+2.安装cmake和bison
+yum -y install cmake bison
+yum -y install bison
+
+3.安装Mysql
+useradd -M -s /sbin/nologin mysql
+* 添加用户组mysql ，将mysql用户默认组设置为mysql用户组
+
+4.编译mysql
+cd /lamp/mysql-5.5.48
+
+cmake -DCMAKE_INSTALL_PREFIX=/opt/mysql \
+-DMYSQL_DATADIR=/opt/mysql/data \
+-DMYSQL_UNIX_ADDR=/opt/mysql/mysql.sock \
+-DDEFAULT_CHARSET=utf8 \
+-DDEFAULT_COLLATION=utf8_general_ci \
+-DEXTRA_CHARSETS=gbk,gb2312,utf8,ascii \
+-DENABLED_LOCAL_INFILE=ON \
+-DWITH_INNOBASE_STORAGE_ENGINE=1 \
+-DWITH_FEDERATED_STORAGE_ENGINE=1 \
+-DWITH_BLACKHOLE_STORAGE_ENGINE=1 \
+-DWITHOUT_EXAMPLE_STORAGE_ENGINE=1 \
+-DWITHOUT_PARTITION_STORAGE_ENGINE=1 \
+-DWITH_MYISAM_STORAGE_ENGINE=1 \
+-DWITH_MEMORY_STORAGE_ENGINE=1 \
+-DWITH_FAST_MUTEXES=1 \
+-DWITH_ZLIB=bundled \
+-DENABLED_LOCAL_INFILE=1 \
+-DWITH_READLINE=1 \
+-DMYSQL_USER=mysql \
+-DMYSQL_TCP_PORT=3306 \
+-DWITH_EMBEDDED_SERVER=1 \
+-DWITH_DEBUT=0
+
+make
+make install
+
+5.修改mysql目录权限
+cd /app/mysql/
+chown -R root .
+chown -R mysql data
+配置环境变量，方便日常管理
+echo 'export PATH=/app/mysql/bin:$PATH' >>/etc/profile
+source /etc/profile
+
+6.复制mysql配置文件(生产环境中根据服务器性能配置选型)
+cp support-files/my-medium.cnf /etc/my.cnf
+
+7.创建数据库授权表，初始化数据库
+/app/mysql/scripts/mysql_install_db --basedir=/app/mysql/ --datadir=/app/mysql/data/ --user=mysql
+/usr/local/mysql/bin/mysql_install_db --basedir=/usr/local/mysql/ --datadir=/data/mysql_db --user=mysql --group=mysql
+
+8.复制启动管理脚本
+cp /lamp/mysql-5.5.48/support-files/mysql.server /etc/init.d/mysqld
+chmod +x /etc/init.d/mysqld
+
+9.启动MySQL服务：
+1.用原源代码的方式去使用和启动mysql
+/usr/local/mysql/bin/mysqld_safe --user=mysql &
+/app/mysql/bin/mysqld_safe --user=mysql --socket=/app/mysql/tmp/mysql.sock --datadir=/app/mysql/data/ &
+2.重启以后还要生效:
+vim /etc/rc.local
+/usr/local/mysql/bin/mysqld_safe --user=mysql &
+3.设定mysql密码
+/usr/local/mysql/bin/mysqladmin -uroot password 123
+
+10	基本优化：减少列，行.
+select user,host from mysql.user;
+delete from mysql.user where user='';
+drop database test;
+额外授权管理员：（末尾必须加with grant option，表示可以授权其他用户，这样才和root等价）
+grant all privileges on *.* to admin@'localhost' identified by '123' with grant option;
+
+11	mysql操作命令的历史记录：在root家目录下.mysql_history
+
+12	mysql忘记密码操作：
+mysqld_safe --skip-grant-tables --datadir=/app/mysql/data/ --socket=/app/mysql/tmp/mysql.sock --user=mysql &
+
+13	运维工程师常用SQL语言小结：
+DDL-数据定义语言（CREATE,ALTER,DROP）<-运维
+DML-数据操作语言（SELECT,INSERT,DELETE,UPDATE）<-开发
+DCL-数据控制语言（GRANT,REVOKE,COMMIT,ROLLBACK）<-运维
+
+14	创建1个UTF-8的数据库
+create database wb_utf8 CHARACTER SET utf8 COLLATE utf8_general_ci;
+show create database abc;	查看abc库的默认字符集
+show databases like '%my%';	模糊查询数据库
+
+
+15	查看mysql支持的存储引擎及常用命令
+show engines;		show variables like '%storage_engine%';		set names latin1(gbk,utf8)(以某编码模式查看name字段)
+mysql -uroot -p123 -e "show global status;" | grep sel/insert（查看mysql的全局状态，里面包含mysql性能的一些计数器：比如查询了多少次,写入多少次）
+show global status like "%insert%";mysql命令行查询插入次数，一般用户shell脚本，统计mysql查询插入次数
+
+
+16	修改MySQL存储引擎：修改my.cnf，在配置文件里面增加参数default-storage-engine，然后重启数据库服务。
+[mysqld]
+default-storage-engine=MyISAM
+
+17	mysql多实例的安装与启动（使用场景，在并发量不大，服务器资源宽裕的时候，可以在一台服务器上启动多个mysql,减少资源浪费）
+
+	1.mkdir -p /data/{3306,3307}/data && chown -R mysql /data/	创建多个实例的数据目录，一般以端口命名，并给mysql用户授权
+	2.cp /root/my.cnf /data/3306/ && cp /root/my.cnf /data/3307	修改并调整配置文件位置
+	3.mysqld_safe --defaults-file=/data/3307/my.cnf 2>&1 > /dev/null &	每个实例的启动命令，重点是指定配置文件位置
+	4.mysqladmin -uroot -p -S /data/3307/mysql.sock shutdown		数据库停止命令，重点指定sock文件路径，端点文件
+	5.mysql_install_db --basedir=/app/mysql/ --datadir=/data/3307/data/ --user=mysql --socket=/data/3307/mysql.sock		初始化数据局库
+
+18	mysqldump关键参数说明：
+	mysqldump --help
+	
+	1.  -B指定多个库，增加建库语句和use语句，备份注意库名前加-B选项，区别是恢复时如果没有该库，会自动创建，一般常用选项
+	mysqldump -uroot -p123 -S /app/mysql/tmp/mysql.sock -B abc --events |gzip > /opt/abcb.sql.gz
+	mysql -uroot -p123 -e "show databases;"|grep -Evi "databases|infor|perfor"|sed -r 's#^([a-z].*$)#mysqldump -uroot -p123 --events -B \1|gzip >/opt/\1.sql.gz#g'|bash	备份多个库并压缩
+
+	2.--compact去掉注释，适合调试输出，生产不用
+	3.-A 所有库
+	4.-F 刷新binlog日志
+	5.--master-data 增加binlog日志文件名及对应的位置点。
+	6.-x,--lock-all-tables	锁表，一般用于myisam备份
+	7.-l,--lock-tables 只读锁表
+	8.-d只备份表结构
+	9.-t只备份数据
+	10.--single-transaction适合innodb事务数据库备份
+	InnoDB表在备份时，通常会使用--single-transaction，来保证备份的一致性，工作原理是设定本次会话的隔离级别为:REPEATABLE READ,以确保本次会话（dump）时，不会看到其他会话已经提交了数据。
+
+生产环境备份区别：
+	myisam:	mysqldump -uroot -p123 -AB --master-data=2 -x|gzip > /root/all.sql.gz
+
+	innodb:mysqldump -uroot -p123 -ABx --master-data=2 --events --single-transaction |gzip > /root/all.sql.gz
+		   
+		   mysqldump -uroot -p -B -F -R -x --master-data=2 ops|gzip > root/ops.sql.gz
+
+			-----------------
+			参数说明：
+			-B：指定数据库
+			-F：刷新日志
+			-R：备份存储过程等
+			-x：锁表
+			--master-data：在备份语句里添加CHANGE MASTER语句以及binlog文件及位置点信息
+		   
+
+	DBA:mysqldump -uroot -p123 -AB --flush-privileges --single-transaction --master-data=1 --flush-logs --triggers(触发器) --routines（存储过程） --events --hex-blob |gzip > /root/all.sql.gz
+	DBA:mysqldump -uroot -p123 -AB --flush-privileges --single-transaction --flush-logs --triggers --routines --events --hex-blob |gzip > /root/all.sql.gz
+19	mysql的binlog日志作用：记录mysql内部增删改等操作对mysql数据库有内容更新的记录。
+	mysqlbinlog -d abc mysql-bin.000013 > abc.sql	(-d 参数：分库，指定某个库，如果不加，则输出所有binlog记录信息)
+	
+		基于位置点、时间点的增量恢复：但是时间恢复不准确，1秒可能已经插入了多条数据，所以一般用位置点恢复。
+		mysqlbinlog mysql-bin.000013 --start-position=4 --stop-position=107 -r pos.sql
+		mysqlbinlog mysql-bin.000013 --start-datetime='2017-05-05 13:26:16' --stop-datetime='2017-05-05 23:25:18' -r time.sql
+		
+20	总结常用命令使用：1.mysqldump	2.mysql		3.mysqlbinlog 	4.mysqladmin
+
+21	1.主从同步生产授权方案1
+	主库：web 123123 10.1.1.1 3306 (select,insert,delete,update)
+	从库：主库的web用户同步到从库，然后收回insert,delete,update权限，或者在从库配置文件启动时，在mysqld下配置read-only参数：（该参数对root用户不生效）
+	
+	通知开发：
+	web 123123 10.1.1.1 3306 (select insert,delete,update权限)
+	web 123123 10.0.0.2		 (select权限)
+	
+	生产授权方案2
+	web_w 123123 10.1.1.1 3306 (select insert,delete,update权限)
+	web_r 123123 10.1.1.2 3306 (select)
+	风险：web_w连接从库！，要与开发结合好，防止开发写错用户！
+		  开发面对多套用户密码不专业。
+	
+	生产授权方案3
+	不同步mysql库：进行如下授权：
+	主：web 123123 10.1.1.1 3306 (select insert,delete,update权限)
+	从：web 123123 10.0.0.2		 (select权限)
+	重点生产常用：忽略mysql库和information_schema库的主从同步
+		都在[mysqld]下配置
+		
+	1  replicate-ignore-db=mysql
+		binlog-do-db=testdb	指定只binlog某个库,一般不用
+	2	binlog-ignore-db=mysql
+	3	binlog-ignore-db=performance_schema
+	4	binlog-ignore-db=information_schema
+	
+	缺陷：从库切换主库时，连接用户权限问题。需要保留一个从库专门准备接替主。
+	
+22.一主多从架构，主库宕机，从库顶替，容灾方案。
+	
+	解决方案：
+	1.主库master宕机，登录从库执行
+		show processlist;查看IO及sql线程工作状态：
+	2.分别登录从库，查看master.info，看哪个从库的二进制日志点最大，没有延迟的情况POS差距最小，也就表示他接受到的数据最接近主库，数据丢失最少，甚至一致。
+		cat /data/3306/data/master.info
+		cat /data/3307/data/master.info
+		例：master.info里的change master等相关信息。
+	3.确保所有relay.log全部更新完毕。
+		在每个从库上执行stop slave io_thread;show processlist;
+		直到看到	Has read all relay log;表示从库更新执行完毕；
+	4.将准备提升为主的从IP切换为原来主的IP，登录到要切为主的从库执行
+		stop slave;
+		reset master;	切换为主库
+		quit;
+	5.进入到要切主的数据目录，删除master.info relay-log.info
+		cd /data/3306/data/		&&		rm -f master.info relay-log.info
+		检查授权表，read-only等参数
+	6.3306提升为主库，修改配置文件
+		vi /data/3306/my.cnf
+		开启：log-bin=/data/3306/mysql-bin
+		如果存在log-slave-updates read-only等参数，一定要注释掉
+		/data/3306/mysqld_safe --user=mysql &	该完配置文件，重启数据库，至此提升为主库完毕
+	7.其他从库操作：检查授权表，看是否存在同步用户，权限等设置：然后重新change master
+		stop slave;
+		change master to master_host='192.168.1.11';//如果不同步就指定位置点。
+		start slave;
+		
+23.优化思路
+	1网站出问题，很慢。
+		1	show full processlist;	查看哪些语句正在等待执行
+		2	例：待优化语句	select id from ad_lod_detail where ader='ibm_esd-jazz_flash' and dateling='2008-12-22' and pos='developer_banner';需要关联查询3列
+		3	查看表结构	show create table ad_lod_detail\G;	分析主键唯一索引
+		4	查看条件字段列的唯一性
+			select count(distinct ader) from ad_old_detail;
+			select count(distinct dateline) from ad_lod_detail;
+			从字段中筛选出不重复的，最少的列，根据以上分析和研发经理其他语句的情况下，创建如下索引：
+			create index d_a_p on ad_old_detail(dateline,ader(20),pos(20));
+		5提示：在生产环境中访问频繁的达标，创建索引会很耗费时间，也许需要几分钟，应在业务流量低谷时建立索引
+			explain select id from ad_old_detail where ader='ibm_esd-jazz_flash' and ,,
+			show full processlist;	再执行一次，查看是否有效，最后查看负载。
+			
+			
+	
+	2慢查询语句（日志文件，根据网站类型及经验分析慢查询时间）
+		long_query_time = 1
+		log-slow-queries = /data/3306/slow.log
+	3	top	uptime查看系统负载
+	
+	4利用desc分析查询语句，通过查询类型，rows遍历的列等带来分析调优查询语句
+		desc select * from pet where id=2\G
+
+	24.mysql数据类型
+		1、数值类型：
+			1>tinyint	1字节，可以表示0-255无符号，可以表示-128--+127有符号
+			2>int		4字节 也分有符号和无符号，也就是正负号
+			3>decimal	以字符串形式存储的浮点数decimal(5,2)表示数值总共5位，小数占2位
+		
+		2、字符串类型
+			1>char		定长字符串
+			2>varchar	变长字符串
+			3>text		这种类型用来存放超大文本
+			4>enum		枚举类型（多选一）例：sex enum('w','m','x')代表sex这个字段，可以取w,m,x中的一个值
+
+		3、日期类型
+			表示时间值的日期和时间类型为DATETIME、DATE、TIMESTAMP、TIME和YEAR
+		
+		
+		
+		
+	
+	
+	
+	
+	
+	
+	
+
+		
+
+
+
+
+
+

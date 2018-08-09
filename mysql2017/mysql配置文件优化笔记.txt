@@ -1,0 +1,84 @@
+Mysql优化笔记：
+ 
+从慢查询、连接数、Key_buffer_size、临时表、Open Table情况、进程使用情况、查询缓存、排序使用情况、文件打开数、表锁情况、表扫描情况 
+这些方面去优化
+
+慢查询优化步骤：
+show full processlist; 查询堆积等待执行的sql语句
+set profiling=on;	开启剖析检测状态
+select * from `issues` where `lottery_id` = 64 and `end_time` > 1533711661 order by `id` asc limit 100;	多执行几次慢查询的语句
+show profiles;剖析查看持续执行结果
+mysql> show profiles;
++----------+------------+--------------------------------------------------------------------------------------------------------+
+| Query_ID | Duration   | Query                                                                                                  |
++----------+------------+--------------------------------------------------------------------------------------------------------+
+|        1 | 0.00020000 | show full processlist                                                                                  |
+|        2 | 0.48477700 | select * from `issues` where `lottery_id` = 64 and `end_time` > 1533711661 order by `id` asc limit 100 |
+|        3 | 0.46482675 | select * from `issues` where `lottery_id` = 64 and `end_time` > 1533711661 order by `id` asc limit 1   |
+|        4 | 0.48396325 | select * from `issues` where `lottery_id` = 64 and `end_time` > 1533711661 order by `id` asc limit 1   |
+|        5 | 0.50885350 | select * from `issues` where `lottery_id` = 64 and `end_time` > 1533711661 order by `id` asc limit 100 |
+|        6 | 0.50406100 | select * from `issues` where `lottery_id` = 64 and `end_time` > 1533711661 order by `id` asc limit 100 |
+|        7 | 0.49180400 | select * from `issues` where `lottery_id` = 64 and `end_time` > 1533711661 order by `id` asc limit 100 |
+|        8 | 0.50907825 | select * from `issues` where `lottery_id` = 64 and `end_time` > 1533711661 order by `id` asc limit 100 |
+|        9 | 0.50178450 | select * from `issues` where `lottery_id` = 64 and `end_time` > 1533711661 order by `id` asc limit 200 |
+|       10 | 0.00008925 | show profiles limit 3                                                                                  |
+|       11 | 0.00011675 | show profiles limits 3                                                                                 |
++----------+------------+--------------------------------------------------------------------------------------------------------+
+
+mysql> show profile for query 6;	查案执行状态,关键是在查询的时候有没有真正使用到减少运算的字段的索引
+
+
+mysql> explain select * from `issues` where `lottery_id` = 64 and `end_time` > 1533711661 order by `id` asc limit 100;	分析语句执行状态
++----+-------------+--------+------------+-------+-----------------------------------+---------+---------+------+------+----------+-------------+
+| id | select_type | table  | partitions | type  | possible_keys                     | key     | key_len | ref  | rows | filtered | Extra       |
++----+-------------+--------+------------+-------+-----------------------------------+---------+---------+------+------+----------+-------------+
+|  1 | SIMPLE      | issues | NULL       | index | lottery_issue,lottery_id,end_time | PRIMARY | 4       | NULL |  200 |     5.50 | Using where |
++----+-------------+--------+------------+-------+-----------------------------------+---------+---------+------+------+----------+-------------+
+
+optimize table tbl_name;	1.优化数据表的存储空间，并释放因大量读写操作造成的数据碎片
+注意：
+1 在OPTIMIZE TABLE运行过程中，MySQL会锁定表。
+2 针对MyISAM表，直接使用如下命令进行优化
+	optimize table table1[,table2][,table3]
+	如果同时优化多个表可以使用逗号分隔。
+	下面优化dede_member_vhistory表，可以看出，优化后data_free值为0。
+3 #InnoDB存储引擎
+	InnoDB引擎的表分为独享表空间和同享表空间的表，我们可以通过show variables like ‘innodb_file_per_table’;来查看是否开启独享表空间。
+	我本地是开启了独享表空间的。此时是无法对表进行optimize操作的，如果操作，会返回如图信息，最后的一条Table does not support optimize, doing recreate + analyze instead。因为该结构下删除了大量的行，此时索引会重组并且会释放相应的空间因此不必优化。 
+
+
+关键字：
+1.慢查询
+show full processlist;
+查看分析慢查询语句，进行优化。
+
+2.连接数
+show variables like '%max_connections%'; 查看最大连接数
+show status like 'max%connections';
+max_used_connections / max_connections * 100% （理想值≈ 85%） 
+如果max_used_connections跟max_connections相同 那么就是max_connections设置过低或者超过服务器负载上限了，低于10%则设置过大。
+
+show status like 'Threads%';查看线程状态
+Threads_connected 跟show processlist结果相同，表示当前连接数。准确的来说，Threads_running是代表当前并发数
+
+3.Key_buffer_size 
+#------key_buffer_size指定索引缓冲区的大小，它决定索引处理的速度，尤其是索引读的速度
+key_buffer_size = 1024M
+
+4.tmpdir
+#MySQL在完成某些join（连接）需求的时候，为了减少参与join的“被驱动表”的读取次数以提高性能，需要使用到join buffer来协助完成join操作当join buffer 太小，MySQL不会将该buffer存入磁盘文件而是先将join buffer中的结果与需求join的表进行操作，然后清空join buffer中的数据，继续将剩余的结果集写入次buffer中
+join_buffer_size = 128M
+tmp_table_size = 128M
+tmpdir = /tmp
+
+5.
+
+6.进程使用
+show status like 'Threads%';查看线程状态
+Threads_connected 跟show processlist结果相同，表示当前连接数。准确的来说，Threads_running是代表当前并发数
+
+#数据缓冲区buffer pool大小，建议使用物理内存的 75%
+innodb_buffer_pool_size = 8G
+
+
+thread_cache_size = 128

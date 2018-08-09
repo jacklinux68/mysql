@@ -1,0 +1,246 @@
+1、开通http端口，关闭ssh端口
+iptables -I INPUT -p tcp --dport 443 -j ACCEPT
+iptables -I INPUT -p tcp --dport 80 -j ACCEPT
+iptables -I INPUT -p tcp --dport 22 -j DROP
+
+2、请简述TCP与UDP的区别：
+对于7层模型来说，二者都是传输层协议：
+TCP传输控制协议:可靠的，面向连接的传输协议，优点：可靠、准确。缺点：传输速度慢。
+UDP用户数据报协议：不可靠的，面向无连接的传输协议。优点：传输速度快，缺点：不可靠。
+
+3、请介绍负载均衡的原理及作用，及你了解的负载均衡系统的名称，数量不限。
+负载均衡集群：原理结构就是由我们的调度器将访问请求压力分摊到不同的节点去完成    LBC
+		结构:
+			调度器
+			服务器资源池
+
+	软件级别：软件：
+				Nginx、amoeba、LVS(负载支撑数量1000台以下，工作平稳度不如硬件，无完善售后保障)
+				
+			硬件：
+				F5  big-ip
+				
+4、查找/var/log 目录下所有大于10MB的文件，并显示每个文件的详细权限信息，请用1个命令来完成。
+
+	find /var/log -size +10M |xargs ls -l
+
+5、简述什么是DDOS攻击和CC攻击，以及防护这两种攻击的安全策略
+DDOS攻击：利用了TCP协议漏洞，源发送了大量的SYN包，并且缺少三次握手的最后一步握手ACK回复，致使被攻击的主机不能为合法用户提供服务。目前最流行的SYN-Flood洪水攻击。
+CC攻击：CC攻击的原理就是，模拟多个用户（多少线程就是多少用户）不停的进行访问（访问那些需要大量数据操作，就是需要大量CPU时间的页面）.这一点用一个一般的性能测试软件就可以做到大量模拟用户并发。不停地发大量数据包给对方服务器造成服务器资源耗尽
+	
+	防护：1关闭不必要的服务和端口；
+		  2限制同一时间内的打开的syn半连接数目；缩短syn半连接的超时时间；
+		  3启用防火墙防DDOS属性。
+		  4借助第三方安全防护：网易云盾，安全狗，绿盟科技的ADS
+6、假设有一台外网服务器，发现远程登录后，很卡，敲打命令要经过好长时间才能得到反馈，请详细的排查下是什么原因。
+1、查看服务器负载情况，
+2、查看网络连接状况，延迟，丢包率，
+3、ssh -v的调试功能查找慢的原因
+
+1.一台办公室内主机无法上网（打不开网站），请给出你的排查步骤？
+	
+	①首先确定物理链路是否联通正常。
+    ②查看本机IP，路由，DNS的设置情况是否达标。
+    ③防火墙是否阻拦。
+    ④ping一下网关，进行最基础的检查，通了，表示能够到达服务器。 
+    ⑤测试到网关或路由器的通常情况，先测网关，然后再测路由器一级一级的测试。
+    ⑥测试ping公网ip的通常情况（记住几个外部IP）， 百度61.135.169.121
+    ⑦测试DNS的通畅。ping出对应IP。
+    ⑧通过以上检查后，还在网管的路由器上进行检查。
+
+2.作为一名运维人员，有运营人员反映我们的网站education.org打开慢，这时你如何排查？思路：用户（电脑网络）->运营商网络->网站服务商（接入层-中间件-第三方接口-数据层）
+
+	1。chrome打开调试模式，访问URL，查看慢在什么地方。网络慢，服务器处理慢，同域名下资源太多，等等
+	2。测试到服务器的延时，丢包率等。
+	3。页面优化，切图等，资源加载不要阻塞，具体找开发聊一下。
+	4。web服务器上开日志，看看是哪个环节慢，如果是PHP慢，就需要调试php参数，优化线程数。PHP逻辑问题需要开发解决。其他类型应用服务类似。
+	5。搭建监控平台，查看服务器负载，观察用户数和慢有没有对应的关系，
+	6。智能dns，cdn，等都可以考虑使用。
+
+3.请问你如何理解网站并发的概念？
+	1	并发简单的来说就是在同一时刻不同用户访问同一资源的问题，专业一点的说法就是在同一时刻有多个线程访问了同一个数据资源。
+	2	高并发带来的问题：1 用户量大，网络环境复杂。2 要求服务稳定性高。3 易于扩展。4 安全性高。
+	
+4.你的公司网站并发多少？访问量多少？
+	比如说网站平均页面大小300K，最高流量点比如说6G，然后公式就是：6*1024*1024/300=20000的并发
+
+5.描述mysql主从同步原理
+	1、主服务器验证请求
+	2、主服务器给从服务器开启一个线程。
+	3、从服务器将自己的二进制位移告诉主服务器
+	4、主服务器检查该值是否小于自己的二进制位移。
+	5、如果小于则通知从服务器来取数据。
+	6、从服务器在主服务器取数据，直至取完，然后进入睡眠状态。
+	7、主服务器有更新时，主服务器的IO线程被激活，并将二进制日志推送给从服务器，通知从服务器进入工作状态。
+	8、从服务器的SQL线程执行二进制文件，之后进入睡眠状态。
+	
+		1.同步时，主库由1个IO线程来完成，从库由2个线程1个IO，1个sql来完成，从IO把主IO传输过来的数据往relay-log中继日志里写，然后有sql线程读取中继日志并写入从库
+		2.在同步之前保证主从的数据一致。
+		3.从库做级联同步的话，注意要在配置文件开启2个参数 mysql-bin	和 log-slave-updates
+
+6.描述mysql主从同步部署
+	1、修改配置文件： /etc/my.cnf （主、从都需添加）
+		log-bin=mysql-bin 开起二进制日志文件
+		server-id=xx 申明本台 mysql 服务器 ID
+		service mysql restart 修改了配置文件，重新启动
+	2、进入数据库（主服务器）
+		grant replication slave on *.* to ' 用户 '@'%' identified by ' 密码 '; 创建从服务器用户
+		flush privileges;
+		show master status; 查看二进制文件名，以及大小
+		flush table with read lock;	不退出终端，新打开1个终端执行全备份 (锁库操作，在备份完毕后执行unlock tables;解锁操作)@@@@@@@@
+		mysqldump -uroot -p123 -AB --master-data=2 --events |gzip > /root/all.sql.gz
+		mysqldump -uroot -p123 -A -B -l --master-data=2 --events |gzip > /root/all.sql.gz	或者直接在备份的时候锁
+	3、进入数据库（从服务器）
+		change master to master_host=' 主服务器 IP',master_user=' 用户 ',master_password=' 密码 ',master_log_file=' 二进制文
+		件 ',master_log_pos= 文件空间大小 ; 确定从主服务器同步
+		show slave status\G; 查看同步服务开启状态
+		start slave; 如果同步状态没有启动，则开启
+
+7.描述mysqlroot密码忘了怎么办？
+	1、skip-grant-tables 修改配置文件，重启数据库
+	2、update mysql.user set password=password("123") where user="root"; && flush privileges; 进入数据库，重设mysql密码
+	3、删除1的配置项，重启数据库
+
+8.描述MyISAM与Innodb数据库引擎特点与区别？
+	1、 存储结构
+		MyISAM：每个MyISAM在磁盘上存储成三个文件。第一个文件的名字以表的名字开始，扩展名指出文件类型。.frm文件存储表定义。数据文件的扩展名为.MYD (MYData)。索引文件的扩展名是.MYI (MYIndex)。
+		InnoDB：所有的表都保存在同一个数据文件中（也可能是多个文件，或者是独立的表空间文件），InnoDB表的大小只受限于操作系统文件的大小，一般为2GB。
+	2、 存储空间
+		MyISAM：可被压缩，存储空间较小。支持三种不同的存储格式：静态表(默认，但是注意数据末尾不能有空格，会被去掉)、动态表、压缩表。
+		InnoDB：需要更多的内存和存储，它会在主内存中建立其专用的缓冲池用于高速缓冲数据和索引。
+	3、 事务支持
+		MyISAM：强调的是性能，每次查询具有原子性,其执行数度比InnoDB类型更快，但是不提供事务支持。
+		InnoDB：提供事务支持事务，外部键等高级数据库功能。 具有事务(commit)、回滚(rollback)和崩溃修复能力(crash recovery capabilities)的事务安全(transaction-safe (ACID compliant))型表。
+	4、 CURD操作
+		MyISAM：如果执行大量的SELECT，MyISAM是更好的选择。(因为没有支持行级锁)，在增删的时候需要锁定整个表格，效率会低一些。相关的是innodb支持行级锁，删除插入的时候只需要锁定改行就行，效率较高
+		InnoDB：如果你的数据执行大量的INSERT或UPDATE，出于性能方面的考虑，应该使用InnoDB表。DELETE 从性能上InnoDB更优，但DELETE FROM table时，InnoDB不会重新建立表，而是一行一行的删除，在innodb上如果要清空保存有大量数据的表，最好使用truncate table这个命令。
+	5、 外键
+		MyISAM：不支持
+		InnoDB：支持
+
+9.描述mysql多实例部署
+	主要就是指定配置文件位置，用户，安装目录，数据目录，socket位置，用于并发量不大，服务器资源宽裕的时候，可以在一台服务器上启动多个mysql,减少资源浪费
+
+10.描述如何查看mysql的命令帮助，请举例
+	1.MySQL数据库有帮助命令，利用命令可以查看可供查询的分类，操作命令是：？ contents;
+	2.查看MySQL自定义的操作语句，可以利用命令：? data definition;
+	3.如果想查看MySQL数据库支持哪些数据类型，可以利用命令：? data types;
+	4.查看数据类型varchar的描述，可以利用命令：? varchar;
+	5.? show;
+11.描述mysql增量备份恢复过程。
+	
+	
+12.mysql出现同步故障如何解决？
+	
+	错误0.从库的配置文件中一般加入log-slave-updates参数用来控制M01是否把所有的操作写入到binary log，默认的情况下mysql是关闭的;特别是双主多从的架构！
+		  常用配置参数：
+		  server-id = IP末位
+		  log-bin = /data/3307/mysql-bin	指定二进制日志位置及文件名
+		  log-slave-updates
+		  expire_logs_days = 7	日志保留期
+		  slave-skip-errors = 1032,1062,1007	根据实际情况而定
+		  
+		  
+	错误1.数据库不同步，错误码1007数据库已存在，创建数据库失败：比如先在从库建立1个数据库，主再建立，
+	解决办法：
+		stop slave;
+		set global sql_slave_skip_counter=1;忽略上一次操作，从下一次记录的操作开始同步
+		start slave;
+	
+	错误2.关键参数
+		Slave_IO_Running:	Yes
+		Slave_SQL_Running:	Yes
+		Seconds_Behind_Master 是否为0，#0表示已经同步状态
+			提示：set global sql_slave_skip_counter=n #n  取值>0 忽略执行N个更新。
+	
+	错误3.一般1032：记录不存在	1062:字段值重复，入库失败	1007：数据库已存在，创建数据库失败等错误，直接在配置文件中加入跳过即可：
+		slave-skip-errors=1032,1062,1007
+		
+	错误4.MySQL连接慢的时候一般在配置文件里加入skip-name-resolve
+		
+13.mysql出现同步延迟原因是什么？如何解决？
+	最简单的减少slave同步延时的方案就是在架构上做优化，尽量让主库的DDL快速执行。还有就是主库是写，对数据安全性较高，
+	比如sync_binlog=1，innodb_flush_log_at_trx_commit = 1 之类的设置，而slave则不需要这么高的数据安全，完全可以讲sync_binlog设置为0或者
+	关闭binlog，innodb_flushlog也可以设置为0来提高sql的执行效率。另外就是使用比主库更好的硬件设备作为slave。
+	
+	1.从库太多导致复制延迟
+		优化：建议从库数量3-5个为宜 
+	2.从库硬件比主库硬件差
+		优化：提升硬件性能 
+	3.慢SQL语句过多
+		优化：SQL语句执行时间太长，需要优化SQL语句 
+	4.主从复制的设计问题
+		优化：主从复制单线程，可以通过多线程IO方案解决；另外MySQL5.6.3支持多线程IO复制。 
+	5.主从库之间的网络延迟
+		优化：尽量链路短，提升端口带宽 
+	6.主库读写压力大
+		优化：前端加buffer和缓存。主从延迟不同步： 
+		不管有多延迟，只要不影响业务就没事
+	7、业务设计缺陷导致延迟影响业务
+		优化：从库没有数据改读主库
+
+
+ #源目标端口转换
+ #iptables -t nat -A POSTROUTING -s 192.168.1.0/24 -o eth0 -j SNAT --to-source 218.29.30.31
+ #iptables -t nat -A PREROUTING -i eth0 -d 218.29.30.31 -p tcp --dport  2346 -j DNAT --to-destination 192.168.1.6:22
+ 
+#防NMAP端口扫描窥探
+#iptables -A INPUT -p tcp --tcp-flags ALL FIN,URG,PSH -j Drop
+#iptables -A INPUT -p tcp --tcp-flags SYN,RST SYN,RST -j Drop
+#iptables -A INPUT -p tcp --tcp-flags SYN,FIN SYN,FIN -j Drop
+ #!/bin/bash
+PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:~/bin
+export PATH
+function support_distro(){
+if [ -z "`egrep -i "centos" /etc/issue`" ];then
+echo "Sorry,iptables script only support centos system now."
+exit 1
+fi
+}
+support_distro
+echo "============================iptables configure============================================"
+# Only support CentOS system
+# 获取SSH端口
+if grep "^Port" /etc/ssh/sshd_config>/dev/null;then
+sshdport=`grep "^Port" /etc/ssh/sshd_config | sed "s/Port\s//g" `
+else
+sshdport=22
+fi
+# 获取DNS服务器IP
+if [ -s /etc/resolv.conf ];then
+nameserver1=`cat /etc/resolv.conf |grep nameserver |awk 'NR==1{print $2 }'`
+nameserver2=`cat /etc/resolv.conf |grep nameserver |awk 'NR==2{print $2 }'`
+fi
+IPT="/sbin/iptables"
+# 删除已有规则
+$IPT --delete-chain
+$IPT --flush
+# 禁止进,允许出,允许回环网卡
+$IPT -P INPUT DROP   
+$IPT -P FORWARD DROP 
+$IPT -P OUTPUT ACCEPT
+$IPT -A INPUT -i lo -j ACCEPT
+# 允许已建立的或相关连接的通行
+$IPT -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+$IPT -A OUTPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+# 限制80端口单个IP的最大连接数为10
+$IPT -I INPUT -p tcp --dport 80 -m connlimit --connlimit-above 10 -j DROP
+# 允许80(HTTP)/873(RSYNC)/443(HTTPS)/20,21(FTP)/25(SMTP)端口的连接
+$IPT -A INPUT -p tcp -m tcp --dport 80 -j ACCEPT
+$IPT -A INPUT -p tcp -m tcp --dport 873 -j ACCEPT
+$IPT -A INPUT -p tcp -m tcp --dport 443 -j ACCEPT
+$IPT -A INPUT -p tcp -m tcp --dport 20 -j ACCEPT
+$IPT -A INPUT -p tcp -m tcp --dport 21 -j ACCEPT
+$IPT -A INPUT -p tcp -m tcp --dport 25 -j ACCEPT
+# 允许SSH端口的连接,脚本自动侦测目前的SSH端口,否则默认为22端口
+$IPT -A INPUT -p tcp -m tcp --dport $sshdport -j ACCEPT
+# 允许ping
+$IPT -A INPUT -p icmp -m icmp --icmp-type 8 -j ACCEPT 
+$IPT -A INPUT -p icmp -m icmp --icmp-type 11 -j ACCEPT
+# 允许DNS
+[ ! -z "$nameserver1" ] && $IPT -A OUTPUT -p udp -m udp -d $nameserver1 --dport 53 -j ACCEPT
+[ ! -z "$nameserver2" ] && $IPT -A OUTPUT -p udp -m udp -d $nameserver2 --dport 53 -j ACCEPT
+# 保存规则并重启IPTABLES
+service iptables save
+service iptables restart
+echo "============================iptables configure completed============================================"

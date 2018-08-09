@@ -1,0 +1,40 @@
+#!/bin/sh
+man_file="/root/webserver/phpcgi"
+php_dir="/usr/local/webserver/php/"
+pid_dir="/usr/local/webserver/php/var/run/php-fpm.pid"
+function_start_php()
+{
+    printf "Starting php-fcgi...\n"
+    ${php_dir}sbin/php-fpm
+}
+
+function_stop_php()
+{
+    printf "Stoping php-fcgi...\n"
+    kill -INT `cat ${pid_dir}`
+}
+
+function_restart_php()
+{
+    printf "Restarting php-fcgi...\n"
+    function_stop_php
+    sleep 1
+    function_start_php
+}
+
+function_reload_php()
+{
+    kill -USR2 `cat ${pid_dir}`
+}
+
+if [ "$1" = "start" ]; then
+    function_start_php
+elif [ "$1" = "stop" ]; then
+    function_stop_php
+elif [ "$1" = "restart" ]; then
+function_restart_php
+elif [ "$1" = "reload" ]; then
+     function_reload_php
+else
+    printf "Usage: ${man_file} {start|stop|restart|reload}\n"
+fi
